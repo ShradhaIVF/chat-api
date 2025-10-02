@@ -1,4 +1,4 @@
-// api/ask.js  — Node serverless function (simplest & stable)
+// api/ask.js — Vercel Node serverless function
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -7,11 +7,13 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Read body safely as JSON
   let message = "";
   try {
-    const body = req.body && typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    const body =
+      typeof req.body === "string" ? JSON.parse(req.body) : req.body;
     message = body?.message || "";
-  } catch {
+  } catch (_) {
     // ignore
   }
   if (!message) {
@@ -21,7 +23,7 @@ export default async function handler(req, res) {
 
   const SYS_PROMPT = `
 You are "Shradha IVF Assistant" for Shradha IVF & Maternity, Patna.
-- Reply warmly and clearly in Hindi unless the user writes English.
+- Reply warmly and clearly in Hindi unless the user writes in English.
 - Always add: "यह जानकारी शिक्षण हेतु है—व्यक्तिगत सलाह के लिए डॉक्टर से मिलें।"
 - Keep answers short (5–8 lines). No prescriptions/doses.
 - For appointments/cost: "कॉल/WhatsApp: 9162562266 • shradhaivf.com"
@@ -39,7 +41,7 @@ You are "Shradha IVF Assistant" for Shradha IVF & Maternity, Patna.
     const r = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
-        "Authorization": Bearer ${process.env.OPENAI_API_KEY},
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
@@ -54,7 +56,9 @@ You are "Shradha IVF Assistant" for Shradha IVF & Maternity, Patna.
     const data = await r.json();
     const reply =
       data.output_text ||
-      data.choices?.[0]?.message?.content ||
+      (data.choices && data.choices[0] && data.choices[0].message
+        ? data.choices[0].message.content
+        : null) ||
       "क्षमा करें, अभी उत्तर उपलब्ध नहीं।";
 
     res.setHeader("Access-Control-Allow-Origin", "*");
