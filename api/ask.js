@@ -1,70 +1,35 @@
 export default async function handler(req, res) {
-  // ✅ CORS headers
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  // 🔹 Add CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*");  // allow all origins
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  // Handle preflight requests
+  // 🔹 Handle preflight request (when browser checks CORS)
   if (req.method === "OPTIONS") {
-    res.status(200).end();
-    return;
+    return res.status(200).end();
   }
-
-  if (req.method !== "POST") {
-    res.status(405).json({ error: "Use POST" });
-    return;
-  }
-
-  let message = "";
-  try {
-    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-    message = body?.message || "";
-  } catch {}
-  if (!message) {
-    res.status(400).json({ error: "Missing message" });
-    return;
-  }
-
-  const SYS_PROMPT = `
-You are "Shradha IVF Assistant" for Shradha IVF & Maternity, Patna.
-- Reply warmly and clearly in Hindi unless the user writes in English.
-- Always add: "यह जानकारी शिक्षण हेतु है—व्यक्तिगत सलाह के लिए डॉक्टर से मिलें।"
-- Keep answers short (5–8 lines). No prescriptions/doses.
-- For appointments/cost: "कॉल/WhatsApp: 9162562266 • shradhaivf.com"
-`;
-
-  const payload = {
-    model: "gpt-4o-mini",
-    input: [
-      { role: "system", content: SYS_PROMPT },
-      { role: "user", content: message }
-    ]
-  };
 
   try {
-    const r = await fetch("https://api.openai.com/v1/responses", {
+    const { message } = req.body;
+
+    // 🔑 Call OpenAI API
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: message }]
+      })
     });
 
-    if (!r.ok) {
-      const e = await r.text();
-      res.status(500).json({ error: "OpenAI error", detail: e });
-      return;
-    }
+    const data = await response.json();
 
-    const data = await r.json();
-    const reply =
-      data.output_text ||
-      data.choices?.[0]?.message?.content ||
-      "क्षमा करें, अभी उत्तर उपलब्ध नहीं।";
-
-    res.status(200).json({ reply });
-  } catch (err) {
-    res.status(500).json({ error: "Server error", detail: String(err) });
+    res.status(200).json({ reply: data.choices[0].message.content });
+  } catch (error) {
+    console.error("API Error:", error);
+    res.status(500).json({ error: "Something went wrong" });
   }
 }
