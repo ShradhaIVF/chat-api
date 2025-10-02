@@ -1,33 +1,20 @@
-// api/ask.js — Vercel Node serverless function with CORS + OpenAI
-
+// api/ask.js — Vercel Node serverless function using /v1/responses
 export default async function handler(req, res) {
-  // --- CORS (allow your website to call this endpoint from the browser)
-  res.setHeader("Access-Control-Allow-Origin", "*");            // or replace * with https://www.shradhaivf.com for stricter
+  // CORS
+  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Use POST" });
 
-  // Preflight request from browsers
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Use POST" });
-  }
-
-  // --- Read JSON body safely
+  // Parse body
   let message = "";
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-    message = (body && body.message) || "";
-  } catch {
-    // ignore JSON parse error
-  }
-  if (!message || typeof message !== "string") {
-    return res.status(400).json({ error: "Missing 'message' string in body" });
-  }
+    message = body?.message || "";
+  } catch {}
+  if (!message) return res.status(400).json({ error: "Missing 'message'" });
 
-  // --- System prompt to keep answers short, bilingual, safe
   const SYS_PROMPT = `
 You are "Shradha IVF Assistant" for Shradha IVF & Maternity, Patna.
 - Reply warmly and clearly in Hindi unless the user writes in English.
@@ -37,16 +24,15 @@ You are "Shradha IVF Assistant" for Shradha IVF & Maternity, Patna.
 `;
 
   try {
-    // --- Call OpenAI (Chat Completions)
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    const r = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        messages: [
+        input: [
           { role: "system", content: SYS_PROMPT },
           { role: "user", content: message },
         ],
@@ -54,20 +40,21 @@ You are "Shradha IVF Assistant" for Shradha IVF & Maternity, Patna.
       }),
     });
 
-    const data = await r.json();
+    const text = await r.text(); // keep raw for debugging
+    let data;
+    try { data = JSON.parse(text); } catch { data = null; }
 
     if (!r.ok) {
-      // Surface OpenAI error back to client for easier debugging
-      return res.status(500).json({
+      // Pass through real status + message so you can see exact reason in the browser
+      return res.status(r.status).json({
         error: "OpenAI error",
-        detail: data?.error || data,
+        status: r.status,
+        detail: data?.error || text,
       });
     }
 
-    const reply =
-      data?.choices?.[0]?.message?.content ||
-      "क्षमा करें, अभी उत्तर उपलब्ध नहीं।";
-
+    const reply = (data && (data.output_text || data?.choices?.[0]?.message?.content))
+      || "क्षमा करें, अभी उत्तर उपलब्ध नहीं।";
     return res.status(200).json({ reply });
   } catch (err) {
     return res.status(500).json({ error: "Server error", detail: String(err) });
