@@ -1,21 +1,25 @@
-// api/ask.js — Vercel Node serverless function
-
 export default async function handler(req, res) {
+  // ✅ CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  // Handle preflight requests
+  if (req.method === "OPTIONS") {
+    res.status(200).end();
+    return;
+  }
+
   if (req.method !== "POST") {
-    res.setHeader("Content-Type", "application/json");
     res.status(405).json({ error: "Use POST" });
     return;
   }
 
-  // Read body safely as JSON
   let message = "";
   try {
-    const body =
-      typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
     message = body?.message || "";
-  } catch (_) {
-    // ignore
-  }
+  } catch {}
   if (!message) {
     res.status(400).json({ error: "Missing message" });
     return;
@@ -56,13 +60,9 @@ You are "Shradha IVF Assistant" for Shradha IVF & Maternity, Patna.
     const data = await r.json();
     const reply =
       data.output_text ||
-      (data.choices && data.choices[0] && data.choices[0].message
-        ? data.choices[0].message.content
-        : null) ||
+      data.choices?.[0]?.message?.content ||
       "क्षमा करें, अभी उत्तर उपलब्ध नहीं।";
 
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Content-Type", "application/json");
     res.status(200).json({ reply });
   } catch (err) {
     res.status(500).json({ error: "Server error", detail: String(err) });
