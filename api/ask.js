@@ -1,77 +1,46 @@
+// api/ask.js — Shradha IVF Assistant (RAG-free, prompt-powered)
+// Uses OpenAI Responses API + strong error reporting + Hindi-first tone.
+
 export default async function handler(req, res) {
-  // ✅ Allow browser calls (CORS)
+  // --- CORS: allow your website to call this endpoint
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Use POST" });
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
-  try {
-    const { message } = req.body;
-
-    // ✅ Shradha IVF Clinic Knowledge Base
-    const CLINIC_FACTS = `
-Shradha IVF & Maternity — Patna
-Lead Consultant: Dr. Shradha Chakhaiyar (MRCOG London)
-OPD: 9 AM – 9 PM (daily), Emergency: 24×7
-Phone/WhatsApp: 9162562266
-Services: IVF, ICSI, IUI, Male & Female infertility evaluation, Fertility preservation, Laparoscopy/Hysteroscopy, Counselling & Support
-Costs: Avg ₹1.35–1.80L per IVF cycle; India range ₹1.5–3.0L. EMI available.
-IVF Journey: Consultation → Tests → Stimulation → Egg retrieval → Fertilization → Embryo transfer → Pregnancy test after 9–10 days.
-Success Rates: <35 yrs ~46.7%; 35–37 yrs ~34.2%; 38–40 yrs ~21.6%; 41–42 yrs ~10.6%; 43+ yrs ~3.2%
-FAQ Examples:
-• IVF = Lab fertilization of eggs & sperm; embryo placed in uterus
-• IUI = Processed sperm placed in uterus during ovulation
-• IVF vs IUI = IUI simpler/cheaper; IVF advanced, needed for complex cases
-• Risks = OHSS (rare), multiple pregnancy, miscarriage, stress
-• Prep = Healthy weight, no smoking/alcohol, sleep, stress management
-Reminder: This information is educational. Always consult our doctors for personalised guidance.
-    `;
-
-    // ✅ System prompt for chatbot
-    const SYS_PROMPT = `
-You are “Shradha IVF Assistant”.
-Always:
-1. Use CLINIC_FACTS for clinic-related info (services, timings, costs, contacts).
-2. For fertility/IVF questions, give clear, short layperson answers (Hindi if user writes in Hindi, English if user writes in English).
-3. Add disclaimer: "यह जानकारी शिक्षण हेतु है—व्यक्तिगत सलाह के लिए डॉक्टर से मिलें।"
-4. End with clinic contact: Call/WhatsApp 9162562266, shradhaivf.com
-Here are your knowledge facts:
-${CLINIC_FACTS}
-    `;
-
-    // ✅ Call OpenAI API
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini", // ✅ use stable model
-        messages: [
-          { role: "system", content: SYS_PROMPT },
-          { role: "user", content: message },
-        ],
-        temperature: 0.5,
-        max_tokens: 500,
-      }),
+  // --- Ensure API key exists
+  if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_API_KEY.startsWith("sk-")) {
+    return res.status(500).json({
+      error: "Server is missing OPENAI_API_KEY (Vercel env var)."
     });
-
-    const data = await response.json();
-
-    if (data.error) {
-      console.error("OpenAI error:", data.error);
-      return res.status(500).json({ error: "OpenAI error", detail: data.error });
-    }
-
-    const answer = data.choices[0]?.message?.content || "क्षमा करें, अभी उत्तर उपलब्ध नहीं।";
-    res.status(200).json({ reply: answer });
-
-  } catch (err) {
-    console.error("Server error:", err);
-    res.status(500).json({ error: "Something went wrong" });
   }
-}
+
+  // --- Read request body safely
+  let message = "";
+  try {
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    message = (body && body.message ? String(body.message) : "").slice(0, 4000);
+  } catch (e) {
+    return res.status(400).json({ error: "Invalid JSON body" });
+  }
+  if (!message) {
+    return res.status(400).json({ error: "Missing 'message' in body" });
+  }
+
+  // --- Shradha IVF Fact Book (condensed but rich; edit freely)
+  const FACTS = `
+Name: Shradha IVF & Maternity, Patna | Lead Consultant: Dr. Shradha Chakhaiyar (MRCOG London)
+OPD: 9:00 AM – 9:00 PM (daily) | Emergency: 24×7 | Phone/WhatsApp: 9162562266 | Web: shradhaivf.com
+What we do best: Patient-centric, ethical fertility care; individualized plans; advanced IVF/ICSI lab; empathetic counselling.
+
+Services (snap):
+- Infertility evaluation (history, hormones, ultrasound, semen analysis) → personalized plan.
+- Female: ovulation disorders, tubal factors, endometriosis, uterine issues.
+- Male: semen analysis, medical/surgical options; ICSI for severe male factor.
+- IUI: processed sperm placed in uterus at ovulation.
+- IVF/ICSI: stimulation → egg retrieval → lab fertilization → embryo transfer.
+- Fertility preservation (egg freezing). Laparoscopy/Hysteroscopy. Counselling & emotional support.
+
+Pricing & EMI:
+- Typical India IVF range ₹1.5–3.
